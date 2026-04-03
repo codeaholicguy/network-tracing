@@ -1,0 +1,83 @@
+{
+  "version": "0.20.1",
+  "environments": [
+    "cursor",
+    "claude",
+    "codex"
+  ],
+  "phases": [
+    "requirements",
+    "design",
+    "planning",
+    "implementation",
+    "testing"
+  ],
+  "createdAt": "2026-04-03T06:25:06.314Z",
+  "updatedAt": "2026-04-03T06:25:49.425Z",
+  "skills": [
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "dev-lifecycle"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "debug"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "capture-knowledge"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "memory"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "simplify-implementation"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "technical-writer"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "verify"
+    },
+    {
+      "registry": "codeaholicguy/ai-devkit",
+      "name": "tdd"
+    },
+    {
+      "registry": "anthropics/skills",
+      "name": "frontend-design"
+    },
+    {
+      "registry": "anthropics/skills",
+      "name": "webapp-testing"
+    },
+    {
+      "registry": "anthropics/skills",
+      "name": "doc-coauthoring"
+    },
+    {
+      "registry": "vercel-labs/agent-skills",
+      "name": "react-best-practices"
+    },
+    {
+      "registry": "vercel-labs/agent-skills",
+      "name": "composition-patterns"
+    },
+    {
+      "registry": "vercel-labs/agent-skills",
+      "name": "web-design-guidelines"
+    },
+    {
+      "registry": "vercel-labs/next-skills",
+      "name": "next-best-practices"
+    },
+    {
+      "registry": "supabase/agent-skills",
+      "name": "supabase-postgres-best-practices"
+    }
+  ]
+}

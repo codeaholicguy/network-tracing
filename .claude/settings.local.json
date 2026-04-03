@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx:*)",
+      "Bash(git worktree:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git:*)",
+      "Bash(/Users/hoangnguyen/Codeaholicguy/Code/network-tracing/.claude/skills/dev-lifecycle/scripts/check-status.sh menubar-network-monitor:*)",
+      "Bash(swift test:*)",
+      "Bash(xcrun llvm-cov:*)",
+      "Bash(remoteAddress\":*)",
+      "Bash(swift build:*)",
+      "Read(//Users/hoangnguyen/.ai-devkit/skills/codeaholicguy/ai-devkit/skills/dev-lifecycle/**)",
+      "Bash(bash scripts/check-status.sh menubar-network-monitor)"
+    ]
+  }
+}
