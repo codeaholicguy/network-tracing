@@ -8,15 +8,31 @@ public struct ConnectionRecord: Identifiable, Hashable, Sendable {
     public var hostname: String?        // PTR record hostname (e.g. "dns.google")
     public var org: String?             // owning organisation from ipinfo.io (e.g. "Google LLC")
     public var lastSeen: Date
+    public var attention: AttentionResult
 
     public init(id: String, remoteAddress: String, processName: String,
-                hostname: String? = nil, org: String? = nil, lastSeen: Date) {
+                hostname: String? = nil, org: String? = nil, lastSeen: Date,
+                attention: AttentionResult? = nil) {
         self.id = id
         self.remoteAddress = remoteAddress
         self.processName = processName
         self.hostname = hostname
         self.org = org
         self.lastSeen = lastSeen
+        self.attention = attention ?? .needsAttention(
+            patternID: AcceptedPatternID.make(
+                processName: processName,
+                value: Self.endpointValue(remoteAddress: remoteAddress, hostname: hostname)
+            )
+        )
+    }
+
+    public static func == (lhs: ConnectionRecord, rhs: ConnectionRecord) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
     /// "hostname:port" when resolved, otherwise raw "ip:port"
@@ -28,6 +44,18 @@ public struct ConnectionRecord: Identifiable, Hashable, Sendable {
 
     /// IP address without port, suitable for reverse DNS lookup
     public var ipAddress: String { Self.extractIP(from: remoteAddress) }
+
+    public func endpointValues(preferHostname: Bool = true) -> [String] {
+        let ipValue = remoteAddress
+        guard let hostname else { return [ipValue] }
+
+        let hostnameValue = Self.endpointValue(remoteAddress: remoteAddress, hostname: hostname)
+
+        if hostnameValue == ipValue {
+            return [ipValue]
+        }
+        return preferHostname ? [hostnameValue, ipValue] : [ipValue, hostnameValue]
+    }
 
     /// Strips the port from an address string, returning the bare IP.
     /// Handles both IPv4 ("1.2.3.4:443" → "1.2.3.4") and IPv6 ("[::1]:8080" → "::1").
@@ -52,5 +80,11 @@ public struct ConnectionRecord: Identifiable, Hashable, Sendable {
         }
         // IPv4 "192.168.1.1:443" → "443"
         return address.components(separatedBy: ":").last
+    }
+
+    static func endpointValue(remoteAddress: String, hostname: String?) -> String {
+        guard let hostname else { return remoteAddress }
+        let port = extractPort(from: remoteAddress) ?? ""
+        return port.isEmpty ? hostname : "\(hostname):\(port)"
     }
 }
