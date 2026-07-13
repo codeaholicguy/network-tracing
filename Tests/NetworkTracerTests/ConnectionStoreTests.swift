@@ -4,9 +4,21 @@ import XCTest
 @MainActor
 final class ConnectionStoreTests: XCTestCase {
     var store: ConnectionStore!
+    var tempDirectory: URL!
+    var acceptedPatternStore: AcceptedPatternStore!
 
     override func setUp() async throws {
-        store = ConnectionStore()
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ConnectionStoreTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        acceptedPatternStore = try AcceptedPatternStore(fileURL: tempDirectory.appendingPathComponent("accepted-patterns.json"))
+        store = ConnectionStore(acceptedPatternStore: acceptedPatternStore)
+    }
+
+    override func tearDown() async throws {
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
     }
 
     // MARK: - Helpers
@@ -114,9 +126,166 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertEqual(store.connections.first?.org, "Example Inc")
     }
 
+    func test_update_marksNewRowsNeedsAttentionWhenNoAcceptedPatternExists() {
+        store.update(with: [conn("1.2.3.4:443")])
+
+        XCTAssertEqual(store.connections.first?.attention.state, .needsAttention)
+        XCTAssertEqual(store.connections.first?.attention.message, "Not accepted yet")
+        XCTAssertEqual(store.attentionCount, 1)
+    }
+
+    func test_init_loadsAcceptedPatternsAndUpdateMarksMatchingRowsAccepted() throws {
+        let pattern = AcceptedHighlightPattern(processName: "curl", value: "1.2.3.4:443")
+        try acceptedPatternStore.save([patternID(for: pattern): pattern])
+        store = ConnectionStore(acceptedPatternStore: acceptedPatternStore)
+
+        store.update(with: [conn("1.2.3.4:443")])
+
+        XCTAssertEqual(store.acceptedPatterns[patternID(for: pattern)], pattern)
+        XCTAssertEqual(store.connections.first?.attention.state, .accepted)
+        XCTAssertEqual(store.attentionCount, 0)
+    }
+
+    func test_applyHostnameReevaluatesAttentionAgainstAcceptedHostnameValue() throws {
+        let pattern = AcceptedHighlightPattern(processName: "curl", value: "example.com:443")
+        try acceptedPatternStore.save([patternID(for: pattern): pattern])
+        store = ConnectionStore(acceptedPatternStore: acceptedPatternStore)
+        store.update(with: [conn("1.2.3.4:443")])
+
+        XCTAssertEqual(store.connections.first?.attention.state, .needsAttention)
+
+        store.applyHostname("example.com", forID: id("1.2.3.4:443"))
+
+        XCTAssertEqual(store.connections.first?.attention.state, .accepted)
+    }
+
+    func test_applyOrgDoesNotChangeAttentionState() {
+        store.update(with: [conn("1.2.3.4:443")])
+
+        store.applyOrg("Example Org", forID: id("1.2.3.4:443"))
+
+        XCTAssertEqual(store.connections.first?.org, "Example Org")
+        XCTAssertEqual(store.connections.first?.attention.state, .needsAttention)
+    }
+
+    func test_acceptEndpointPersistsPatternAndReevaluatesVisibleRows() throws {
+        store.update(with: [conn("1.2.3.4:443")])
+        store.applyOrg("Example Org", forID: id("1.2.3.4:443"))
+
+        try store.acceptEndpoint(forID: id("1.2.3.4:443"))
+
+        let expected = AcceptedHighlightPattern(processName: "curl", value: "1.2.3.4:443", org: "Example Org")
+        XCTAssertEqual(store.acceptedPatterns[patternID(for: expected)], expected)
+        XCTAssertEqual(store.connections.first?.attention.state, .accepted)
+        XCTAssertEqual(try acceptedPatternStore.load()[patternID(for: expected)], expected)
+    }
+
+    func test_acceptEndpointSaveFailureDoesNotMutateAcceptedPatterns() throws {
+        let fileURL = tempDirectory.appendingPathComponent("directory-instead-of-file", isDirectory: true)
+        try FileManager.default.createDirectory(at: fileURL, withIntermediateDirectories: true)
+        let patternStore = try AcceptedPatternStore(fileURL: fileURL)
+        store = ConnectionStore(acceptedPatternStore: patternStore)
+        store.update(with: [conn("1.2.3.4:443")])
+
+        XCTAssertThrowsError(try store.acceptEndpoint(forID: id("1.2.3.4:443")))
+        XCTAssertTrue(store.acceptedPatterns.isEmpty)
+        XCTAssertEqual(store.connections.first?.attention.state, .needsAttention)
+    }
+
+    func test_acceptEndpointUsesHostnameValueWhenAvailable() throws {
+        store.update(with: [conn("1.2.3.4:443")])
+        store.applyHostname("example.com", forID: id("1.2.3.4:443"))
+
+        try store.acceptEndpoint(forID: id("1.2.3.4:443"))
+
+        let expected = AcceptedHighlightPattern(processName: "curl", value: "example.com:443")
+        XCTAssertEqual(store.acceptedPatterns[patternID(for: expected)], expected)
+    }
+
+    func test_acceptAllNeedingAttentionPersistsPatternsAndReevaluatesRows() throws {
+        store.update(with: [
+            conn("1.2.3.4:443", process: "curl"),
+            conn("5.6.7.8:443", process: "Safari")
+        ])
+        store.applyHostname("example.com", forID: id("1.2.3.4:443", process: "curl"))
+        store.applyOrg("Example Org", forID: id("1.2.3.4:443", process: "curl"))
+
+        let acceptedCount = try store.acceptAllNeedingAttention()
+
+        let curlPattern = AcceptedHighlightPattern(processName: "curl", value: "example.com:443", org: "Example Org")
+        let safariPattern = AcceptedHighlightPattern(processName: "Safari", value: "5.6.7.8:443")
+        XCTAssertEqual(acceptedCount, 2)
+        XCTAssertEqual(store.attentionCount, 0)
+        XCTAssertEqual(store.acceptedPatterns[patternID(for: curlPattern)], curlPattern)
+        XCTAssertEqual(store.acceptedPatterns[patternID(for: safariPattern)], safariPattern)
+        XCTAssertEqual(try acceptedPatternStore.load()[patternID(for: curlPattern)], curlPattern)
+        XCTAssertEqual(try acceptedPatternStore.load()[patternID(for: safariPattern)], safariPattern)
+    }
+
+    func test_acceptAllNeedingAttentionSaveFailureDoesNotMutateAcceptedPatterns() throws {
+        let fileURL = tempDirectory.appendingPathComponent("directory-instead-of-file", isDirectory: true)
+        try FileManager.default.createDirectory(at: fileURL, withIntermediateDirectories: true)
+        let patternStore = try AcceptedPatternStore(fileURL: fileURL)
+        store = ConnectionStore(acceptedPatternStore: patternStore)
+        store.update(with: [
+            conn("1.2.3.4:443", process: "curl"),
+            conn("5.6.7.8:443", process: "Safari")
+        ])
+
+        XCTAssertThrowsError(try store.acceptAllNeedingAttention())
+        XCTAssertTrue(store.acceptedPatterns.isEmpty)
+        XCTAssertEqual(store.attentionCount, 2)
+    }
+
+    func test_removeAcceptedPatternMakesMatchingRowsNeedAttentionAgain() throws {
+        store.update(with: [conn("1.2.3.4:443")])
+        try store.acceptEndpoint(forID: id("1.2.3.4:443"))
+        let acceptedID = store.connections.first!.attention.acceptedPatternID
+
+        try store.removeAcceptedPattern(id: acceptedID)
+
+        XCTAssertNil(store.acceptedPatterns[acceptedID])
+        XCTAssertEqual(store.connections.first?.attention.state, .needsAttention)
+    }
+
+    func test_importAcceptedPatternsReevaluatesExistingRows() throws {
+        store.update(with: [conn("1.2.3.4:443")])
+        let importURL = tempDirectory.appendingPathComponent("import.json")
+        try """
+        {
+          "curl--1-2-3-4-443": {
+            "processName": "curl",
+            "value": "1.2.3.4:443"
+          }
+        }
+        """.data(using: .utf8)!.write(to: importURL)
+
+        let summary = try store.importAcceptedPatterns(from: importURL)
+
+        XCTAssertEqual(summary.added, 1)
+        XCTAssertEqual(store.connections.first?.attention.state, .accepted)
+    }
+
+    func test_needsAttentionOnlyFiltersAcceptedRows() throws {
+        store.update(with: [
+            conn("1.2.3.4:443", process: "curl"),
+            conn("5.6.7.8:443", process: "Safari")
+        ])
+        try store.acceptEndpoint(forID: id("1.2.3.4:443", process: "curl"))
+
+        store.needsAttentionOnly = true
+
+        XCTAssertEqual(store.visibleConnections.map(\.processName), ["Safari"])
+        XCTAssertEqual(store.attentionCount, 1)
+    }
+
     // MARK: - Factory
 
     private func makeRecord(_ remote: String, process: String = "curl", hostname: String? = nil, org: String? = nil, lastSeen: Date = .now) -> ConnectionRecord {
         ConnectionRecord(id: "\(process)|\(remote)", remoteAddress: remote, processName: process, hostname: hostname, org: org, lastSeen: lastSeen)
+    }
+
+    private func patternID(for pattern: AcceptedHighlightPattern) -> String {
+        AcceptedPatternID.make(processName: pattern.processName, value: pattern.value)
     }
 }
