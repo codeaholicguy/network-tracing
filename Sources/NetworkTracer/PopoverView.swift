@@ -129,7 +129,6 @@ struct PopoverView: View {
                     copyHostPort(record)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help("Copy \(record.copyableHostPort)")
 
                 if copiedHostPortRecordID == record.id {
                     Text("Copied")
@@ -250,13 +249,11 @@ private struct HostPortCopyButton: NSViewRepresentable {
         button.lineBreakMode = .byTruncatingMiddle
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        button.toolTip = text
         return button
     }
 
     func updateNSView(_ button: HostPortButton, context: Context) {
         button.title = text
-        button.toolTip = text
         context.coordinator.onClick = onClick
     }
 
