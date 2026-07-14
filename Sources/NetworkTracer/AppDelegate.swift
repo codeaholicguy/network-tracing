@@ -44,8 +44,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             updateStatusItemAppearance()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            DispatchQueue.main.async { [weak self] in
+                self?.movePopoverBelowStatusBar()
+            }
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    private func movePopoverBelowStatusBar() {
+        guard let window = popover.contentViewController?.view.window else { return }
+        var frame = window.frame
+        frame.origin.y -= NSStatusBar.system.thickness
+        window.setFrame(frame, display: true)
     }
 
     private func observeStore() {
