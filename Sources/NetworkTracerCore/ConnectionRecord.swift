@@ -42,6 +42,9 @@ public struct ConnectionRecord: Identifiable, Hashable, Sendable {
         return port.isEmpty ? hostname : "\(hostname):\(port)"
     }
 
+    /// Value copied from the popover host column.
+    public var copyableHostPort: String { displayName }
+
     /// IP address without port, suitable for reverse DNS lookup
     public var ipAddress: String { Self.extractIP(from: remoteAddress) }
 

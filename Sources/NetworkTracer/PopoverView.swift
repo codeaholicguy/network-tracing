@@ -6,6 +6,8 @@ struct PopoverView: View {
     @EnvironmentObject var store: ConnectionStore
     @State private var showingAcceptedPatterns = false
     @State private var alertMessage: String?
+    @State private var copiedHostPortRecordID: ConnectionRecord.ID?
+    @State private var copyFeedbackToken = UUID()
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -19,6 +21,7 @@ struct PopoverView: View {
     private let orgWidth:  CGFloat = 96
     private let timeWidth: CGFloat = 66
     private let actionWidth: CGFloat = 86
+    private let copyFeedbackDuration: TimeInterval = 1.5
 
     var body: some View {
         VStack(spacing: 0) {
@@ -121,8 +124,21 @@ struct PopoverView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
 
-            TooltipText(record.displayName)
+            HStack(spacing: 6) {
+                HostPortCopyButton(record.copyableHostPort) {
+                    copyHostPort(record)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .help("Copy \(record.copyableHostPort)")
+
+                if copiedHostPortRecordID == record.id {
+                    Text("Copied")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(record.org ?? "—")
                 .frame(width: orgWidth, alignment: .leading)
@@ -188,6 +204,21 @@ struct PopoverView: View {
         }
     }
 
+    private func copyHostPort(_ record: ConnectionRecord) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(record.copyableHostPort, forType: .string)
+
+        let token = UUID()
+        copyFeedbackToken = token
+        copiedHostPortRecordID = record.id
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + copyFeedbackDuration) {
+            guard copyFeedbackToken == token else { return }
+            copiedHostPortRecordID = nil
+        }
+    }
+
     private func approveAll() {
         do {
             let acceptedCount = try store.acceptAllNeedingAttention()
@@ -200,26 +231,63 @@ struct PopoverView: View {
     }
 }
 
-private struct TooltipText: NSViewRepresentable {
+private struct HostPortCopyButton: NSViewRepresentable {
     let text: String
+    let onClick: () -> Void
 
-    init(_ text: String) {
+    init(_ text: String, onClick: @escaping () -> Void) {
         self.text = text
+        self.onClick = onClick
     }
 
-    func makeNSView(context: Context) -> NSTextField {
-        let textField = NSTextField(labelWithString: text)
-        textField.lineBreakMode = .byTruncatingMiddle
-        textField.maximumNumberOfLines = 1
-        textField.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        textField.toolTip = text
-        return textField
+    func makeNSView(context: Context) -> HostPortButton {
+        let button = HostPortButton(title: text, target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.setButtonType(.momentaryChange)
+        button.alignment = .left
+        button.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        button.lineBreakMode = .byTruncatingMiddle
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.toolTip = text
+        return button
     }
 
-    func updateNSView(_ textField: NSTextField, context: Context) {
-        textField.stringValue = text
-        textField.toolTip = text
+    func updateNSView(_ button: HostPortButton, context: Context) {
+        button.title = text
+        button.toolTip = text
+        context.coordinator.onClick = onClick
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onClick: onClick)
+    }
+
+    final class Coordinator: NSObject {
+        var onClick: () -> Void
+
+        init(onClick: @escaping () -> Void) {
+            self.onClick = onClick
+        }
+
+        @objc func handleClick(_ sender: NSButton) {
+            onClick()
+        }
+    }
+}
+
+private final class HostPortButton: NSButton {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }

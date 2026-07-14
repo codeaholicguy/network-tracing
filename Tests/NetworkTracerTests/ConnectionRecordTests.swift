@@ -26,6 +26,11 @@ final class ConnectionRecordTests: XCTestCase {
         XCTAssertEqual(record.displayName, "localhost:8080")
     }
 
+    func test_copyableHostPort_prefersVisibleHostnameAndPort() {
+        let record = makeRecord(remote: "142.250.80.46:443", hostname: "api.example.com")
+        XCTAssertEqual(record.copyableHostPort, "api.example.com:443")
+    }
+
     func test_hashable_deduplicatesInSet() {
         let a = makeRecord(remote: "1.2.3.4:443", process: "curl")
         let b = makeRecord(remote: "1.2.3.4:443", process: "curl")
